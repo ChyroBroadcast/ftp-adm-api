@@ -40,6 +40,38 @@
 
 			return $row;
 		}
+    
+    public function getUsersByCustomerId($id) {
+      if ( !(isset($id) && is_numeric($id)) )
+        return false;
+      
+      $params = array();
+      $params[':id'] = $id;
+      
+      $statement = <<<SQL
+        SELECT id, fullname, access, phone, is_active, is_admin, email, login 
+        FROM User 
+        WHERE customer = (  SELECT customer FROM User WHERE id = :id )
+SQL;
+			
+      $stmt = $this->db_connection->prepare($statement);
+			if (!$stmt->execute($params))
+				return null;
+      
+			if ($stmt->rowCount() == 0)
+				return false;
+      
+      $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+      
+      foreach($rows as $row) {
+        $row['id'] = intval($row['id']);
+        $row['access'] = boolval($row['access']);
+        $row['is_active'] = boolval($row['access']);
+        $row['is_admin'] = boolval($row['access']);
+      }
+      
+      return $rows;
+    }
 
 
 		public function isConnected() {
