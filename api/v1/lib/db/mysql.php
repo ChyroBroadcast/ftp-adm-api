@@ -45,7 +45,14 @@
       if ( !(isset($id) && is_numeric($id)) )
         return false;
       
-      $statement = 'SELECT id, fullname, access, phone, is_active, is_admin, email, login FROM User WHERE Customer='.$id; 
+      $params = array();
+      $params[':id'] = $id;
+      
+      $statement = <<<SQL
+        SELECT id, fullname, access, phone, is_active, is_admin, email, login 
+        FROM User 
+        WHERE customer = (  SELECT customer FROM User WHERE id = :id )
+SQL;
 			
       $stmt = $this->db_connection->prepare($statement);
 			if (!$stmt->execute($params))
