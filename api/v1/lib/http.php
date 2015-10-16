@@ -47,7 +47,7 @@
 		global $available_formats;
 		global $current_format;
 
-		$formats = split('[,;]', $_SERVER['HTTP_ACCEPT']);
+		$formats = explode('[,;]', $_SERVER['HTTP_ACCEPT']);
 		$found = false;
 
 		foreach ($formats as $format) {
