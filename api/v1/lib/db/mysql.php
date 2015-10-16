@@ -40,43 +40,43 @@
 
 			return $row;
 		}
-		
+
 		public function getUsersByCustomerId($id) {
 			if ( !(isset($id) && is_numeric($id)) )
 				return false;
-			
+
 			$params = array();
 			$params[':id'] = $id;
-			
+
 			$statement = <<<SQL
-			SELECT id, fullname, access, phone, is_active, is_admin, email, login 
-			FROM   User 
+			SELECT id, fullname, access, phone, is_active, is_admin, email
+			FROM   User
 			WHERE  customer = ( SELECT customer FROM User WHERE id = :id )
 SQL;
-			
+
 			$stmt = $this->db_connection->prepare($statement);
 			if (!$stmt->execute($params))
 				return null;
-			
+
 			if ($stmt->rowCount() == 0)
 				return false;
-			
+
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-			
+
 			foreach($rows as $row) {
 				$row['id'] = intval($row['id']);
 				$row['access'] = boolval($row['access']);
 				$row['is_active'] = boolval($row['access']);
 				$row['is_admin'] = boolval($row['access']);
 			}
-			
+
 			return $rows;
 		}
-		
+
 		public function updateUser($fields) {
 			$id = $fields['id'];
 			$statement = 'UPDATE User SET ';
-			
+
 			$to_be_updated = array();
 			unset($fields['id']);
 			foreach($fields as $k => $v) {
@@ -84,14 +84,14 @@ SQL;
 			}
 			$statement .= join(', ', $to_be_updated);
 			$statement .= ' WHERE id = :id';
-			
+
 			$params = array();
 			$params[':id'] = $id;
-			
+
 			error_log($statement);
-			
+
 			$stmt = $this->db_connection->prepare($statement);
-			
+
 			try {
 				$stmt->execute($params);
 			}
@@ -100,13 +100,13 @@ SQL;
 			}
 			return true;
 		}
-		
+
 		public function createUser($fields, $salt) {
-			
+
 			$salt = base64_encode($salt);
 			$password = hash_pbkdf2('sha512', $fields['password'], $salt, 1024, 40, true);
 			$password = base64_encode($password);
-			
+
 			$params = array(
 				':customer' => $fields['customer'],
 				':fullname' => $fields['fullname'],
@@ -115,34 +115,33 @@ SQL;
 				':is_admin' => $fields['is_admin'],
 				':is_active'=> $fields['is_active'],
 				':email'    => $fields['email'],
-				':login'    => $fields['login'],
 				':salt'     => $salt,
 				':password' => $password
 			);
-			
+
 			$statement = <<<SQL
 			INSERT INTO User
-				(id, customer, fullname, password, salt, access, phone, is_active, is_admin, email, login)
+				(id, customer, fullname, password, salt, access, phone, is_active, is_admin, email)
 			VALUES
-				(NULL, :customer, :fullname, :password, :salt, :access, :phone, :is_active, :is_admin, :email, :login)
+				(NULL, :customer, :fullname, :password, :salt, :access, :phone, :is_active, :is_admin, :email)
 SQL;
-		
+
 			error_log($statement);
 			error_log($password);
 			error_log($salt);
-			
+
 			$stmt = $this->db_connection->prepare($statement);
-			
+
 			try{
 				$stmt->execute($params);
 			}
 			catch (Exception $e){
 				return false;
 			}
-			
+
 			error_log($fields['login']);
 			return $this->getUser($fields['nihil'], $fields['email']);
-		
+
 		}
 
 
