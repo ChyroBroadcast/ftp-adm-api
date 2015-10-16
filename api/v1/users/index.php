@@ -14,9 +14,12 @@
 			break;
 
 		case 'GET':
-			if (isset($_SESSION['user']))
-				httpResponse(200, array('message' => 'ok !'));
-			else
+			if (isset($_SESSION['user'])) {
+        $uid = $_SESSION['user']['id'];
+        $users = $db_driver->getUsersByCustomerId($uid);
+				httpResponse(200, $users);
+			}
+      else
 				httpResponse(401, array('message' => 'Not logged in'));
 			break;
 
