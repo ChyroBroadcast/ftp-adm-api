@@ -12,11 +12,11 @@
 			$this->db_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		}
 
-		public function getuser($id, $login) {
+		public function getUser($id, $login) {
 			if ((isset($id) && !is_numeric($id)) || (isset($login) && !is_string($login)))
 				return false;
 
-			$statement = 'SELECT id, email, fullname, password, access, phone, is_active, is_admin FROM User WHERE ';
+			$statement = 'SELECT id, customer, email, fullname, password, access, phone, is_active, is_admin FROM User WHERE ';
 			$params = array();
 			if (isset($id)) {
 				$statement .= 'id = :id';
