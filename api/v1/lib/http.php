@@ -111,7 +111,31 @@
 	function httpParseInput($option = array()) {
 		global $available_formats;
 
-		if (!isset($_SERVER['CONTENT_TYPE']) || array_key_exists($_SERVER['CONTENT_TYPE'], $available_formats) === false) {
+		$found = false;
+
+		if (isset($_SERVER['CONTENT_TYPE'])) {
+			/**
+			 * Parse HTTP content-type
+			 * See http://www.w3.org/Protocols/rfc1341/4_Content-Type.html for more information
+			 */
+			$parts = explode(';', $_SERVER['CONTENT_TYPE']);
+
+			$mime_type = trim(array_shift($parts));
+			if (array_key_exists($mime_type, $available_formats) !== false) {
+				$found = true;
+
+				foreach ($parts as $parameter) {
+					list($attribute, $value) = explode('=', $parameter, 2);
+
+					$attribute = trim($attribute);
+					$value = trim($value);
+
+					$option[$attribute] = $value;
+				}
+			}
+		}
+
+		if (!$found) {
 			header("Content-Type: application/json; charset=utf-8");
 			http_response_code(415);
 			echo json_encode(array(
@@ -122,7 +146,7 @@
 		}
 
 		$input_functions = true;
-		include($available_formats[$_SERVER['CONTENT_TYPE']]);
+		include($available_formats[$mime_type]);
 
 		return formatParseInput($option);
 	}
