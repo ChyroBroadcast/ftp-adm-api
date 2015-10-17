@@ -17,6 +17,7 @@
 				return false;
 
 			$statement = 'SELECT id, customer, email, fullname, password, access, phone, is_active, is_admin FROM User WHERE ';
+
 			$params = array();
 			if (isset($id)) {
 				$statement .= 'id = :id';
@@ -29,16 +30,52 @@
 			$stmt = $this->db_connection->prepare($statement);
 			if (!$stmt->execute($params))
 				return null;
-
 			if ($stmt->rowCount() == 0)
 				return false;
+			if ($stmt->rowCount() != 1)
+				return false;
 
-			$row = $stmt->fetch(PDO::FETCH_ASSOC);
-			$row['id'] = intval($row['id']);
-			$row['is_active'] = boolval($row['is_active']);
-			$row['is_admin'] = boolval($row['is_admin']);
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			$user =  $this->reformUsers($rows);
+			return $user[0];
+		}
 
-			return $row;
+		public function getAllUser($id, $cid) {
+			if ( !(isset($id) && is_numeric($id)) )
+				return false;
+			if ( !(isset($cid) && is_numeric($cid)) )
+				return false;
+
+			$params = array();
+			$params[':id'] = $id;
+			$params['cid'] = $cid;
+
+			$statement = <<<SQL
+			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
+				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory,
+				c.name, c.total_space, c.used_space, c.path
+			FROM   User u
+			LEFT JOIN FtpUser f USING (id)
+			LEFT JOIN Customer c ON (u.customer = c.id)
+			WHERE
+					u.customer = :cid
+				AND
+					u.id = :id
+SQL;
+			$stmt = $this->db_connection->prepare($statement);
+			try {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
+				return false;
+			}
+			if (!$res)
+				return false;
+			if ($stmt->rowCount() != 1)
+				return null;
+
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			$user =  $this->reformUsers($rows);
+			return $user[0];
 		}
 
 		public function getUsersByCustomerId($id) {
@@ -49,28 +86,55 @@
 			$params[':id'] = $id;
 
 			$statement = <<<SQL
-			SELECT id, fullname, access, phone, is_active, is_admin, email
-			FROM   User
-			WHERE  customer = ( SELECT customer FROM User WHERE id = :id )
+			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
+			 	f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory
+			FROM   User u
+			LEFT JOIN FtpUser f USING (id)
+			WHERE u.customer = :id
 SQL;
 
 			$stmt = $this->db_connection->prepare($statement);
-			if (!$stmt->execute($params))
-				return null;
+			try {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
+				return false;
+			}
+			if (!$res)
+				return false;
 
 			if ($stmt->rowCount() == 0)
-				return false;
+				return null;
 
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-			foreach($rows as $row) {
-				$row['id'] = intval($row['id']);
-				$row['access'] = boolval($row['access']);
-				$row['is_active'] = boolval($row['access']);
-				$row['is_admin'] = boolval($row['access']);
-			}
+			return $this->reformUsers($rows);
+		}
 
-			return $rows;
+		public function deleteUser($id, $cid) {
+			if ( !(isset($id) && is_numeric($id)) )
+				return false;
+			if ( !(isset($id) && is_numeric($cid)) )
+				return false;
+
+			$params = array();
+			$params[':id'] = $id;
+			$params[':cid'] = $cid;
+
+			$statement = <<<SQL
+			DELETE FROM User
+			WHERE
+					id = :id
+				AND
+					customer = :cid
+SQL;
+
+			$stmt = $this->db_connection->prepare($statement);
+			try {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
+				return false;
+			}
+			return true;
 		}
 
 		public function updateUser($fields) {
@@ -80,7 +144,7 @@ SQL;
 			$to_be_updated = array();
 			unset($fields['id']);
 			foreach($fields as $k => $v) {
-				array_push($to_be_updated, $k . '=' . "'$v'");
+				array_push($to_be_updated, $k . '=' . ":'$v'");
 			}
 			$statement .= join(', ', $to_be_updated);
 			$statement .= ' WHERE id = :id';
@@ -148,6 +212,45 @@ SQL;
 		public function isConnected() {
 			// return !$this->db_connection->connect_error;
 			return true;
+		}
+
+		private function reformUsers($rows) {
+			if (count($rows)) foreach($rows as $key => $row) {
+				// Manage User
+				$rows[$key]['id'] = intval($rows[$key]['id']);
+				$rows[$key]['customer'] = intval($rows[$key]['customer']);
+				$rows[$key]['access'] = boolval($rows[$key]['u_access']);
+				$rows[$key]['is_active'] = boolval($rows[$key]['is_active']);
+				$rows[$key]['is_admin'] = boolval($rows[$key]['is_admin']);
+
+				// Manage Customer
+				if (isset($rows[$key]['total_space']))
+					$rows[$key]['total_space'] = intval($rows[$key]['total_space']);
+				if (isset($rows[$key]['used_space']))
+					$rows[$key]['used_space'] = intval($rows[$key]['used_space']);
+
+				// Manage FTP
+				if (isset($rows[$key]['f_access']))
+					$rows[$key]['ftp_read'] = $rows[$key]['ftp_write'] = 0;
+				if (isset($rows[$key]['chroot']))
+					$rows[$key]['chroot'] = boolval($rows[$key]['chroot']);
+				if (($rows[$key]['f_access'] == 'read') || ($rows[$key]['f_access'] == 'read_write'))
+					$rows[$key]['ftp_read'] = 1;
+				if (($rows[$key]['f_access'] == 'write') || ($rows[$key]['f_access'] == 'read_write'))
+					$rows[$key]['ftp_write'] = 1;
+
+				// Special PATH
+				if ((isset($rows[$key]['path'])) && (isset($rows[$key]['homedirectory'])))
+					$rows[$key]['directory'] = str_replace($rows[$key]['path'], '', $rows[$key]['homedirectory']);
+
+				// Remove unnecessary elements
+				unset($rows[$key]['f_access']);
+				unset($rows[$key]['path']);
+				unset($rows[$key]['homedirectory']);
+				unset($rows[$key]['access']);
+			}
+			return $rows;
+
 		}
 	}
 ?>
