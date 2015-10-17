@@ -30,13 +30,11 @@
 			$stmt = $this->db_connection->prepare($statement);
 			if (!$stmt->execute($params))
 				return null;
-			if ($stmt->rowCount() == 0)
-				return false;
 			if ($stmt->rowCount() != 1)
 				return false;
 
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-			$user =  $this->reformUsers($rows);
+			$user = $this->reformUsers($rows);
 			return $user[0];
 		}
 
@@ -87,7 +85,7 @@ SQL;
 
 			$statement = <<<SQL
 			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
-			 	f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory
+				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory
 			FROM   User u
 			LEFT JOIN FtpUser f USING (id)
 			WHERE u.customer = :id
