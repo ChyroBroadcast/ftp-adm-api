@@ -8,82 +8,77 @@
 
 	switch ($_SERVER['REQUEST_METHOD']) {
 		case 'DELETE':
-			if (isset($_SESSION['user']))
-				if (isset($_GET['id'])) {
-					$id =  intval($_GET['id']);
-					if ($id != $_SESSION['user']['id']) {
-						$result =  $db_driver->deleteUser($id, $_SESSION['user']['customer']);
-						if ($result)
-							httpResponse(200, array('message' => 'User deleted'));
-						else
-							httpResponse(500, null);
-					} else {
-						httpResponse(403, array('message' => 'Could not delete myself'));
-					}
+			checkConnected();
+
+			if (isset($_GET['id'])) {
+				$id =  intval($_GET['id']);
+				if ($id != $_SESSION['user']['id']) {
+					$result =  $db_driver->deleteUser($id, $_SESSION['user']['customer']);
+					if ($result)
+						httpResponse(200, array('message' => 'User deleted'));
+					else
+						httpResponse(500, null);
 				} else {
-					httpResponse(400, array('message' => 'Specify user'));
+					httpResponse(403, array('message' => 'Could not delete myself'));
 				}
-			else
-				httpResponse(401, array('message' => 'Not logged in'));
+			} else {
+				httpResponse(400, array('message' => 'Specify user'));
+			}
 			break;
 
 		case 'GET':
-			if (isset($_SESSION['user'])) {
-				if (isset($_GET['id'])) {
-					$id = intval($_GET['id']);
-					$user = $db_driver->getAllUser($id, $_SESSION['user']['customer']);
-					if ($user === null)
-						httpResponse(204, null);
-					if ($user)
-						httpResponse(200, $user);
-					httpResponse(500, null);
-				} else {
-					$cid = $_SESSION['user']['customer'];
-					$users = $db_driver->getUsersByCustomerId($cid);
-					if ($users === null)
-						httpResponse(204, null);
-					if ($users)
-						httpResponse(200, $users);
-					httpResponse(500, null);
-				}
+			checkConnected();
+
+			if (isset($_GET['id'])) {
+				$id = intval($_GET['id']);
+				$user = $db_driver->getAllUser($id, $_SESSION['user']['customer']);
+				if ($user === null)
+					httpResponse(204, null);
+				if ($user)
+					httpResponse(200, $user);
+				httpResponse(500, null);
+			} else {
+				$cid = $_SESSION['user']['customer'];
+				$users = $db_driver->getUsersByCustomerId($cid);
+				if ($users === null)
+					httpResponse(204, null);
+				if ($users)
+					httpResponse(200, $users);
+				httpResponse(500, null);
 			}
-			else
-				httpResponse(401, array('message' => 'Not logged in'));
 			break;
 
 		case 'POST':
-			if (isset($_SESSION['user'])) {
-				$fields = httpParseInput();
+			checkConnected();
 
-				if (isset($fields['id'])) {
-					$users = $db_driver->updateUser($fields);
-					if ($users === true) {
-						$status_code = 200;
-						$message = 'Successfully updated';
-					} else {
-						$status_code = 422;
-						$message = 'Bad JSON request';
-					}
+			$fields = httpParseInput();
+
+			if (isset($fields['id'])) {
+				$users = $db_driver->updateUser($fields);
+				if ($users === true) {
+					$status_code = 200;
+					$message = 'Successfully updated';
 				} else {
-					$salt = generate_salt(40);
-					$users = $db_driver->createUser($fields, $salt);
-					if ($users === false) {
-						$status_code = 422;
-						$key = 'message';
-						$message = 'Bad JSON request';
-					} else {
-						$status_code = 201;
-						$message = $users;
-						$key = 'user';
-						unset($message['password']);
-						unset($message['salt']);
-					}
-
+					$status_code = 422;
+					$message = 'Bad JSON request';
 				}
-				httpResponse($status_code, array($key => $message));
+			} else {
+				$salt = generate_salt(40);
+				$users = $db_driver->createUser($fields, $salt);
+				if ($users === false) {
+					$status_code = 422;
+					$key = 'message';
+					$message = 'Bad JSON request';
+				} else {
+					$status_code = 201;
+					$message = $users;
+					$key = 'user';
+					unset($message['password']);
+					unset($message['salt']);
+				}
+
 			}
-			else
-				httpResponse(401, array('message' => 'Not logged in'));
+			httpResponse($status_code, array($key => $message));
 			break;
 
 		case 'OPTIONS':
