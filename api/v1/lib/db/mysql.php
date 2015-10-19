@@ -209,9 +209,108 @@ SQL;
 		}
 
 
+		public function getCustomer($id) {
+			if ( !(isset($id) && is_numeric($id)) )
+				return false;
+
+			$params = array();
+			$params[':id'] = $id;
+
+			$statement = <<<SQL
+			SELECT c.*
+			FROM Customer c
+			WHERE c.id = :id
+SQL;
+
+			$stmt = $this->db_connection->prepare($statement);
+			$stmt->execute($params);
+			try {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
+				return false;
+			}
+			if (!$res)
+				return false;
+
+			if ($stmt->rowCount() != 1)
+				return null;
+
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			foreach($rows as $key => $row) {
+				$rows[$key]['id'] = intval($rows[$key]['id']);
+				$rows[$key]['total_space'] = intval($rows[$key]['total_space']);
+				$rows[$key]['used_space'] = intval($rows[$key]['used_space']);
+				$rows[$key]['max_monthly_space'] = intval($rows[$key]['max_monthly_space']);
+
+				// Remove unnecessary elements
+				unset($rows[$key]['price']);
+				unset($rows[$key]['path']);
+				unset($rows[$key]['url']);
+			}
+			return $rows[0];
+		}
+
+		public function updateCustomer($fields) {
+			// define elements to be updated
+			$update_fields = array(
+				'name' => array('type' => 'string', 'length' => 255),
+				'total_space' => array('type' => 'int')
+			);
+
+			// manage Id
+			$params = array();
+			$params[':id'] = intval($fields['id']);
+			unset($fields['id']);
+
+			// validate or exit
+			$to_be_updated = array();
+			foreach($update_fields as $k => $type) {
+				if (array_key_exists($k, $fields)) {
+					array_push($to_be_updated, $k . '=:' . $k);
+					$msg = $this->validate($fields[$k], $type);
+					if ($msg !== true)
+						return $k.$msg;
+					$params[':'.$k] = $fields[$k];
+				}
+			}
+
+			// SQL
+			$statement = 'UPDATE Customer SET ';
+			$statement .= join(', ', $to_be_updated);
+			$statement .= ' WHERE id = :id';
+
+			$stmt = $this->db_connection->prepare($statement);
+
+			try {
+				$stmt->execute($params);
+			}
+			catch (Exception $e) {
+				print $e;
+				return false;
+			}
+			return true;
+		}
+
 		public function isConnected() {
 			// return !$this->db_connection->connect_error;
 			return true;
+		}
+
+		private function validate($el, $type) {
+			switch ($type['type']) {
+				case 'int':
+					if (is_numeric($el))
+						return true;
+					return ' is not numeric';
+					break;
+				case 'string':
+					if (!is_string($el))
+						return ' is not string';
+					if (strlen($el) > 255)
+						return ' is too long';
+					return true;
+					break;
+			}
 		}
 
 		private function reformUsers($rows) {
@@ -250,7 +349,6 @@ SQL;
 				unset($rows[$key]['access']);
 			}
 			return $rows;
-
 		}
 	}
 ?>
