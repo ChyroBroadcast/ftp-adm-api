@@ -138,16 +138,22 @@ SQL;
 		public function updateUser($fields) {
 			$id = $fields['id'];
 			$statement = 'UPDATE User SET ';
-
+			
+			$params = array();
 			$to_be_updated = array();
 			unset($fields['id']);
+			
+			$i = 0;
 			foreach($fields as $k => $v) {
-				array_push($to_be_updated, $k . '=' . ":'$v'");
+				$i++;
+				$params[":k$i"] = $k;
+				$params[":v$i"] = $v;
+				array_push($to_be_updated, ":k$i = :v$i");
 			}
+			
 			$statement .= join(', ', $to_be_updated);
 			$statement .= ' WHERE id = :id';
 
-			$params = array();
 			$params[':id'] = $id;
 
 			error_log($statement);
