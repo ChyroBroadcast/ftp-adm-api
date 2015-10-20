@@ -16,7 +16,7 @@
 			if ((isset($id) && !is_numeric($id)) || (isset($login) && !is_string($login)))
 				return false;
 
-			$statement = 'SELECT id, customer, email, fullname, password, access, phone, is_active, is_admin FROM User WHERE ';
+			$statement = 'SELECT id, customer, email, fullname, password, salt, access, phone, is_active, is_admin FROM User WHERE ';
 
 			$params = array();
 			if (isset($id)) {
@@ -316,7 +316,7 @@ SQL;
 				// Manage User
 				$rows[$key]['id'] = intval($rows[$key]['id']);
 				$rows[$key]['customer'] = intval($rows[$key]['customer']);
-				$rows[$key]['access'] = boolval($rows[$key]['u_access']);
+				$rows[$key]['access'] = boolval($rows[$key]['access']);
 				$rows[$key]['is_active'] = boolval($rows[$key]['is_active']);
 				$rows[$key]['is_admin'] = boolval($rows[$key]['is_admin']);
 
@@ -331,9 +331,9 @@ SQL;
 					$rows[$key]['ftp_read'] = $rows[$key]['ftp_write'] = 0;
 				if (isset($rows[$key]['chroot']))
 					$rows[$key]['chroot'] = boolval($rows[$key]['chroot']);
-				if (($rows[$key]['f_access'] == 'read') || ($rows[$key]['f_access'] == 'read_write'))
+				if (($rows[$key]['access'] == 'read') || ($rows[$key]['access'] == 'read_write'))
 					$rows[$key]['ftp_read'] = 1;
-				if (($rows[$key]['f_access'] == 'write') || ($rows[$key]['f_access'] == 'read_write'))
+				if (($rows[$key]['access'] == 'write') || ($rows[$key]['access'] == 'read_write'))
 					$rows[$key]['ftp_write'] = 1;
 
 				// Special PATH
