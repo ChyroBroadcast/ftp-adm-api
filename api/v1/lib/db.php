@@ -15,7 +15,7 @@
 		 */
 		// public function finishTransaction();
 
-		public function getuser($id, $login);
+		//public function getuser($id, $login);
 
 		/**
 		 * \brief Check if a connection to database exists

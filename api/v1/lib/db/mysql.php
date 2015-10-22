@@ -12,41 +12,21 @@
 			$this->db_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		}
 
-		public function getUser($id, $login) {
-			if ((isset($id) && !is_numeric($id)) || (isset($login) && !is_string($login)))
-				return false;
-
-			$statement = 'SELECT id, customer, email, fullname, password, salt, access, phone, is_active, is_admin FROM User WHERE ';
-
-			$params = array();
-			if (isset($id)) {
-				$statement .= 'id = :id';
-				$params[':id'] = $id;
-			} else {
-				$statement .= 'email = :email';
-				$params[':email'] = $login;
+		public function getUser($id, $cid, $login) {
+			if (!isset($login)) {
+				if ( !(isset($id) && is_numeric($id)) )
+					return false;
+				if ( !(isset($cid) && is_numeric($cid)) )
+					return false;
 			}
 
-			$stmt = $this->db_connection->prepare($statement);
-			if (!$stmt->execute($params))
-				return null;
-			if ($stmt->rowCount() != 1)
-				return false;
-
-			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-			$user = $this->reformUsers($rows);
-			return $user[0];
-		}
-
-		public function getAllUser($id, $cid) {
-			if ( !(isset($id) && is_numeric($id)) )
-				return false;
-			if ( !(isset($cid) && is_numeric($cid)) )
-				return false;
-
 			$params = array();
-			$params[':id'] = $id;
-			$params['cid'] = $cid;
+			if (isset($login)) {
+				$params[':email'] = $login;
+			} else {
+				$params[':id'] = $id;
+				$params['cid'] = $cid;
+			}
 
 			$statement = <<<SQL
 			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
@@ -55,15 +35,18 @@
 			FROM   User u
 			LEFT JOIN FtpUser f USING (id)
 			LEFT JOIN Customer c ON (u.customer = c.id)
-			WHERE
-					u.customer = :cid
-				AND
-					u.id = :id
 SQL;
+			if (isset($login)) {
+				$statement .= ' WHERE email = :email';
+			} else {
+				$statement .= ' WHERE  u.customer = :cid AND u.id = :id';
+			}
+
 			$stmt = $this->db_connection->prepare($statement);
 			try {
 				$res = $stmt->execute($params);
 			} catch (Exception $e) {
+				print $e;
 				return false;
 			}
 			if (!$res)
@@ -295,6 +278,7 @@ SQL;
 			return true;
 		}
 
+
 		public function getAddress($cid, $aid = nul) {
 			if ( !(isset($cid) && is_numeric($cid)) )
 				return false;
@@ -343,7 +327,7 @@ SQL;
 				'city' => array('type' => 'text', 'required' => true),
 				'country' => array('type' => 'text', 'required' => true),
 				'phone' => array('type' => 'text', 'required' => false),
-				'iban' => array('type' => 'text', 'required' => false),
+				'iban' => array('type' => 'iban', 'required' => false),
 				'vat_number' => array('type' => 'text', 'required' => false)
 			);
 			$params = array();
@@ -445,6 +429,7 @@ SQL;
 				return true;
 			}
 		}
+
 		public function deleteAddress($id, $cid) {
 			if ( !(isset($id) || !is_numeric($id)) )
 				return false;
@@ -480,13 +465,20 @@ SQL;
 			return true;
 		}
 
+		/*
+		*		Validations fonctions
+		*/
+
+		/**
+		 * \brief main validate method
+		 */
 		private function validate($el, $type) {
+			if (($type['required'] === true) && !trim($el))
+				return ' need to be set';
 			switch ($type['type']) {
 				case 'int':
 					if (!is_numeric($el))
 						return ' is not numeric';
-					if (($type['required'] === true) && !trim($el))
-						return ' need to be set';
 					return true;
 					break;
 				case 'string':
@@ -494,8 +486,6 @@ SQL;
 						return ' is not string';
 					if (strlen($el) > $type['length'])
 						return ' is too long';
-					if (($type['required'] === true) && !trim($el))
-						return ' need to be set';
 					return true;
 					break;
 				case 'email':
@@ -505,20 +495,62 @@ SQL;
 						return ' is too long';
 					if (!filter_var($el, FILTER_VALIDATE_EMAIL))
 						return ' is not email address';
-					if (($type['required'] === true) && !trim($el))
-						return ' need to be set';
 					return true;
 					break;
 				case 'text':
 					if (!is_string($el))
 						return ' is not text';
-					if (($type['required'] === true) && !trim($el))
-						return ' need to be set';
+					return true;
+					break;
+				case 'iban':
+					if (!is_string($el))
+						return ' is not IBAN';
+					if (!$this->checkIBAN($el))
+						return ' is not valid IBAN';
 					return true;
 					break;
 			}
 		}
 
+		/**
+		 * \brief iban validate method
+		 */
+		private function checkIBAN($iban)
+		{
+		    $iban = strtolower(str_replace(' ','',$iban));
+		    $Countries = array('al'=>28,'ad'=>24,'at'=>20,'az'=>28,'bh'=>22,'be'=>16,'ba'=>20,'br'=>29,'bg'=>22,'cr'=>21,'hr'=>21,'cy'=>28,'cz'=>24,'dk'=>18,'do'=>28,'ee'=>20,'fo'=>18,'fi'=>18,'fr'=>27,'ge'=>22,'de'=>22,'gi'=>23,'gr'=>27,'gl'=>18,'gt'=>28,'hu'=>28,'is'=>26,'ie'=>22,'il'=>23,'it'=>27,'jo'=>30,'kz'=>20,'kw'=>30,'lv'=>21,'lb'=>28,'li'=>21,'lt'=>20,'lu'=>20,'mk'=>19,'mt'=>31,'mr'=>27,'mu'=>30,'mc'=>27,'md'=>24,'me'=>22,'nl'=>18,'no'=>15,'pk'=>24,'ps'=>29,'pl'=>28,'pt'=>25,'qa'=>29,'ro'=>24,'sm'=>27,'sa'=>24,'rs'=>22,'sk'=>24,'si'=>19,'es'=>24,'se'=>24,'ch'=>21,'tn'=>24,'tr'=>26,'ae'=>23,'gb'=>22,'vg'=>24);
+		    $Chars = array('a'=>10,'b'=>11,'c'=>12,'d'=>13,'e'=>14,'f'=>15,'g'=>16,'h'=>17,'i'=>18,'j'=>19,'k'=>20,'l'=>21,'m'=>22,'n'=>23,'o'=>24,'p'=>25,'q'=>26,'r'=>27,'s'=>28,'t'=>29,'u'=>30,'v'=>31,'w'=>32,'x'=>33,'y'=>34,'z'=>35);
+
+		    if(strlen($iban) == $Countries[substr($iban,0,2)]){
+
+		        $MovedChar = substr($iban, 4).substr($iban,0,4);
+		        $MovedCharArray = str_split($MovedChar);
+		        $NewString = "";
+
+		        foreach($MovedCharArray AS $key => $value) {
+		            if(!is_numeric($MovedCharArray[$key])) {
+		                $MovedCharArray[$key] = $Chars[$MovedCharArray[$key]];
+		            }
+		            $NewString .= $MovedCharArray[$key];
+		        }
+
+		        if(bcmod($NewString, '97') == 1) {
+		        	return true;
+		        } else {
+		            return false;
+		        }
+		     } else
+		        return false;
+		}
+
+
+		/*
+		*		Presentations fonctions
+		*/
+
+		/**
+		 * \brief Users method
+		 */
 		private function reformUsers($rows) {
 			if (count($rows)) foreach($rows as $key => $row) {
 				// Manage User

@@ -26,7 +26,7 @@
 			if (!$credential || !isset($credential['login']) || !isset($credential['password']))
 				httpResponse(400, array('message' => '"login" and "password" are required'));
 
-			$user = $db_driver->getUser(NULL, $credential['login']);
+			$user = $db_driver->getUser(NULL, NULL, $credential['login']);
 			if ($user === false || !$user['is_active'])
 				httpResponse(401, array('message' => 'Authentication failed'));
 

@@ -31,9 +31,9 @@
 
 			if (isset($_GET['id'])) {
 				$id = intval($_GET['id']);
-				$user = $db_driver->getAllUser($id, $_SESSION['user']['customer']);
+				$user = $db_driver->getUser($id, $_SESSION['user']['customer'], NULL);
 				if ($user === null)
-					httpResponse(204, null);
+					httpResponse(200, null);
 				if ($user)
 					httpResponse(200, $user);
 				httpResponse(500, null);
