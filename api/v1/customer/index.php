@@ -15,7 +15,6 @@
 			if ($customer)
 				httpResponse(200, $customer);
 			httpResponse(500, null);
-
 			break;
 
 		case 'POST':

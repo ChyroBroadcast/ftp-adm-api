@@ -54,6 +54,7 @@
 			$fields = httpParseInput();
 
 			if (isset($fields['id'])) {
+				$fields['customer'] = $_SESSION['user']['customer'];
 				$users = $db_driver->updateUser($fields);
 				if ($users === true) {
 					$status_code = 200;

@@ -84,7 +84,7 @@ SQL;
 			$params[':id'] = $id;
 
 			$statement = <<<SQL
-			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
+			SELECT u.id, u.fullname, u.access, u.phone, u.is_active, u.is_admin, u.email, u.customer,
 				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory
 			FROM   User u
 			LEFT JOIN FtpUser f USING (id)
@@ -138,11 +138,11 @@ SQL;
 		public function updateUser($fields) {
 			$id = $fields['id'];
 			$statement = 'UPDATE User SET ';
-			
+
 			$params = array();
 			$to_be_updated = array();
 			unset($fields['id']);
-			
+
 			$i = 0;
 			foreach($fields as $k => $v) {
 				$i++;
@@ -150,7 +150,7 @@ SQL;
 				$params[":v$i"] = $v;
 				array_push($to_be_updated, ":k$i = :v$i");
 			}
-			
+
 			$statement .= join(', ', $to_be_updated);
 			$statement .= ' WHERE id = :id';
 
@@ -214,7 +214,7 @@ SQL;
 
 
 		public function getCustomer($id) {
-			if ( !(isset($id) && is_numeric($id)) )
+			if ( !(isset($id) || ! is_numeric($id)) )
 				return false;
 
 			$params = array();
@@ -257,8 +257,8 @@ SQL;
 		public function updateCustomer($fields) {
 			// define elements to be updated
 			$update_fields = array(
-				'name' => array('type' => 'string', 'length' => 255),
-				'total_space' => array('type' => 'int')
+				'name' => array('type' => 'string', 'length' => 255, 'required' => true),
+				'total_space' => array('type' => 'int', 'required' => true)
 			);
 
 			// manage Id
@@ -295,6 +295,110 @@ SQL;
 			return true;
 		}
 
+		public function getAddress($cid, $aid = nul) {
+			if ( !(isset($cid) && is_numeric($cid)) )
+				return false;
+
+			$params = array();
+			$params[':cid'] = $cid;
+
+
+			$statement = <<<SQL
+			SELECT a.*
+			FROM Address a
+			LEFT JOIN addresscustomerrelation ac ON (a.id = ac.address)
+			WHERE ac.customer = :cid
+SQL;
+
+			if ( ($aid !== null) && is_numeric($aid)) {
+				$params[':aid'] = intval($aid);
+				$statement .= ' AND a.id = :aid';
+			}
+
+			$stmt = $this->db_connection->prepare($statement);
+			try {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
+				return false;
+			}
+			if (!$res)
+				return false;
+
+			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			foreach($rows as $key => $row) {
+				$rows[$key]['id'] = intval($rows[$key]['id']);
+			}
+			//return $rows;
+			if ( ($aid !== null) && is_numeric($aid))
+				return $rows[0];
+			return $rows;
+		}
+
+		public function setAddress($fields) {
+			// define elements to be updated
+			$update_fields = array(
+				'title' => array('type' => 'text', 'required' => true),
+				'street' => array('type' => 'text', 'required' => true),
+				'zip_code' => array('type' => 'text', 'required' => true),
+				'city' => array('type' => 'text', 'required' => true),
+				'country' => array('type' => 'text', 'required' => true),
+				'phone' => array('type' => 'text', 'required' => true),
+				'iban' => array('type' => 'text', 'required' => true),
+				'vat_number' => array('type' => 'text', 'required' => true)
+			);
+
+			// manage Id
+			$params = array();
+			$params[':customer'] = intval($fields['customer']);
+
+			// Update
+			if (intval($fields['id'])) {
+				// Remove elements
+				$params[':id'] = intval($fields['id']);
+				unset($fields['id']);
+				unset($fields['customer']);
+
+				// validate
+				$to_be_updated = array();
+				foreach($update_fields as $k => $type) {
+					if (array_key_exists($k, $fields)) {
+						array_push($to_be_updated, $k . '=:' . $k);
+						$msg = $this->validate($fields[$k], $type);
+						if ($msg !== true)
+							return $k.$msg;
+						$params[':'.$k] = $fields[$k];
+					}
+				}
+
+				$statement = <<<SQL
+				UPDATE Address
+				LEFT JOIN addresscustomerrelation ON (id = address) SET
+
+SQL;
+				$statement .= join(', ', $to_be_updated);
+				$statement .= ' WHERE id = :id AND customer = :customer';
+			} else {
+				// INSERT
+				/*$statement1 = 'INSERT INTO Address ()';
+				$statement1 .= join(', ', $update_fields);
+				$statement1 .= ') VALUES '; */
+				//$dbh->lastInsertId();
+			}
+
+
+			$stmt = $this->db_connection->prepare($statement);
+
+			try {
+				$stmt->execute($params);
+			}
+			catch (Exception $e) {
+				print $e;
+				return false;
+			}
+			return true;
+		}
+
+
 		public function isConnected() {
 			// return !$this->db_connection->connect_error;
 			return true;
@@ -303,15 +407,37 @@ SQL;
 		private function validate($el, $type) {
 			switch ($type['type']) {
 				case 'int':
-					if (is_numeric($el))
-						return true;
-					return ' is not numeric';
+					if (!is_numeric($el))
+						return ' is not numeric';
+					if (($type['required'] === true) && !trim($el))
+						return ' need to be set';
+					return true;
 					break;
 				case 'string':
 					if (!is_string($el))
 						return ' is not string';
-					if (strlen($el) > 255)
+					if (strlen($el) > $type['length'])
 						return ' is too long';
+					if (($type['required'] === true) && !trim($el))
+						return ' need to be set';
+					return true;
+					break;
+				case 'email':
+					if (!is_string($el))
+						return ' is not string';
+					if (strlen($el) > $type['length'])
+						return ' is too long';
+					if (!filter_var($el, FILTER_VALIDATE_EMAIL))
+						return ' is not email address';
+					if (($type['required'] === true) && !trim($el))
+						return ' need to be set';
+					return true;
+					break;
+				case 'text':
+					if (!is_string($el))
+						return ' is not text';
+					if (($type['required'] === true) && !trim($el))
+						return ' need to be set';
 					return true;
 					break;
 			}
@@ -333,13 +459,13 @@ SQL;
 					$rows[$key]['used_space'] = intval($rows[$key]['used_space']);
 
 				// Manage FTP
-				if (isset($rows[$key]['f_access']))
-					$rows[$key]['ftp_read'] = $rows[$key]['ftp_write'] = 0;
 				if (isset($rows[$key]['chroot']))
 					$rows[$key]['chroot'] = boolval($rows[$key]['chroot']);
-				if (($rows[$key]['access'] == 'read') || ($rows[$key]['access'] == 'read_write'))
+				if (isset($rows[$key]['f_access']))
+					$rows[$key]['ftp_read'] = $rows[$key]['ftp_write'] = 0;
+				if (($rows[$key]['f_access'] == 'read') || ($rows[$key]['f_access'] == 'read_write'))
 					$rows[$key]['ftp_read'] = 1;
-				if (($rows[$key]['access'] == 'write') || ($rows[$key]['access'] == 'read_write'))
+				if (($rows[$key]['f_access'] == 'write') || ($rows[$key]['f_access'] == 'read_write'))
 					$rows[$key]['ftp_write'] = 1;
 
 				// Special PATH
