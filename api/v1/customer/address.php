@@ -7,12 +7,18 @@
 
 	switch ($_SERVER['REQUEST_METHOD']) {
 		case 'DELETE':
-			if (isset($_SESSION['user']))
-				httpResponse(200, array('message' => 'ok !'));
-			else
-				httpResponse(401, array('message' => 'Not logged in'));
+			checkConnected();
+			if (isset($_GET['id'])) {
+				$id =  intval($_GET['id']);
+				$result =  $db_driver->deleteAddress($id, $_SESSION['user']['customer']);
+				if ($result)
+					httpResponse(200, array('message' => 'Address deleted'));
+				else
+					httpResponse(500, null);
+			} else {
+				httpResponse(400, array('message' => 'Specify address'));
+			}
 			break;
-
 		case 'GET':
 			checkConnected();
 

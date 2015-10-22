@@ -258,7 +258,7 @@ SQL;
 			// define elements to be updated
 			$update_fields = array(
 				'name' => array('type' => 'string', 'length' => 255, 'required' => true),
-				'total_space' => array('type' => 'int', 'required' => true)
+				'total_space' => array('type' => 'int', 'required' => false)
 			);
 
 			// manage Id
@@ -342,21 +342,19 @@ SQL;
 				'zip_code' => array('type' => 'text', 'required' => true),
 				'city' => array('type' => 'text', 'required' => true),
 				'country' => array('type' => 'text', 'required' => true),
-				'phone' => array('type' => 'text', 'required' => true),
-				'iban' => array('type' => 'text', 'required' => true),
-				'vat_number' => array('type' => 'text', 'required' => true)
+				'phone' => array('type' => 'text', 'required' => false),
+				'iban' => array('type' => 'text', 'required' => false),
+				'vat_number' => array('type' => 'text', 'required' => false)
 			);
-
-			// manage Id
 			$params = array();
-			$params[':customer'] = intval($fields['customer']);
 
-			// Update
-			if (intval($fields['id'])) {
+			if (intval($fields['id'])) // UPDATE
+			{
 				// Remove elements
 				$params[':id'] = intval($fields['id']);
-				unset($fields['id']);
+				$params[':customer'] = intval($fields['customer']);
 				unset($fields['customer']);
+				unset($fields['id']);
 
 				// validate
 				$to_be_updated = array();
@@ -377,27 +375,105 @@ SQL;
 SQL;
 				$statement .= join(', ', $to_be_updated);
 				$statement .= ' WHERE id = :id AND customer = :customer';
-			} else {
-				// INSERT
-				/*$statement1 = 'INSERT INTO Address ()';
-				$statement1 .= join(', ', $update_fields);
-				$statement1 .= ') VALUES '; */
-				//$dbh->lastInsertId();
-			}
 
+				// Execution
+				$stmt = $this->db_connection->prepare($statement);
+				try {
+					$stmt->execute($params);
+				}
+				catch (Exception $e) {
+					return false;
+				}
+				return true;
+
+			}
+			else // INSERT
+			{
+				// check if all elements are presents
+				$fields_inserted = array();
+				$values_inserted = array();
+				foreach($update_fields as $k => $type) {
+					if ($type['required'] === true) {
+						if (array_key_exists($k, $fields)) {
+							$msg = $this->validate($fields[$k], $type);
+							if ($msg !== true)
+								return $k.$msg;
+							array_push($fields_inserted, $k);
+							array_push($values_inserted, ':'.$k);
+							$params[':'.$k] = $fields[$k];
+						} else {
+							return $k.' is needed';
+						}
+					} else {
+						if (array_key_exists($k, $fields)) {
+							$msg = $this->validate($fields[$k], $type);
+							if ($msg !== true)
+								return $k.$msg;
+							array_push($fields_inserted, $k);
+							array_push($values_inserted, ':'.$k);
+							$params[':'.$k] = $fields[$k];
+						}
+					}
+				}
+
+				// INSERT
+				$statement1 = 'INSERT INTO Address (';
+				$statement1 .= join(', ', $fields_inserted);
+				$statement1 .= ') VALUES (';
+				$statement1 .= join(', ', $values_inserted);
+				$statement1 .= ')';
+
+				$this->db_connection->beginTransaction();
+				$stmt1 = $this->db_connection->prepare($statement1);
+				try {
+					$stmt1->execute($params);
+					$aid = $this->db_connection->lastInsertId();
+				} catch(PDOExecption $e) {
+					$this->db_connection->rollback();
+					return false;
+				}
+				$statement2 = 'INSERT INTO addresscustomerrelation (customer, address) VALUES (:customer, :address)';
+				$stmt2 = $this->db_connection->prepare($statement2);
+				$params2 = array(':customer' => $fields['customer'], ':address' => $aid);
+				try {
+					$stmt2->execute($params2);
+					$this->db_connection->commit();
+				} catch(PDOExecption $e) {
+					$this->db_connection->rollback();
+					return false;
+				}
+				return true;
+			}
+		}
+		public function deleteAddress($id, $cid) {
+			if ( !(isset($id) || !is_numeric($id)) )
+				return false;
+			if ( !(isset($id) || !is_numeric($cid)) )
+				return false;
+
+			$params = array();
+			$params[':id'] = $id;
+			$params[':cid'] = $cid;
+
+			$statement = <<<SQL
+			DELETE Address,addresscustomerrelation
+			FROM Address
+			LEFT JOIN addresscustomerrelation ON (id = address)
+			WHERE
+					id = :id
+				AND
+					customer = :cid
+SQL;
 
 			$stmt = $this->db_connection->prepare($statement);
-
 			try {
-				$stmt->execute($params);
-			}
-			catch (Exception $e) {
+				$res = $stmt->execute($params);
+			} catch (Exception $e) {
 				print $e;
 				return false;
 			}
 			return true;
 		}
-
 
 		public function isConnected() {
 			// return !$this->db_connection->connect_error;
