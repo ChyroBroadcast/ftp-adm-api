@@ -50,36 +50,28 @@
 
 		case 'POST':
 			checkConnected();
-
+			$salt = NULL;
 			$fields = httpParseInput();
-
+			$fields['customer'] = $_SESSION['user']['customer'];
 			if (isset($fields['id'])) {
-				$fields['customer'] = $_SESSION['user']['customer'];
-				$users = $db_driver->updateUser($fields);
+				if (isset($fields['password']))
+					$salt = generate_salt(40);
+				$users = $db_driver->setUser($fields, $salt);
 				if ($users === true) {
-					$status_code = 200;
-					$message = 'Successfully updated';
-				} else {
-					$status_code = 422;
-					$message = 'Bad JSON request';
+					httpResponse(200, array('message' => 'Successfully updated'));
 				}
+				if ($users)
+					httpResponse(400, array('message' => $users));
+				httpResponse(500, null);
 			} else {
 				$salt = generate_salt(40);
-				$users = $db_driver->createUser($fields, $salt);
-				if ($users === false) {
-					$status_code = 422;
-					$key = 'message';
-					$message = 'Bad JSON request';
-				} else {
-					$status_code = 201;
-					$message = $users;
-					$key = 'user';
-					unset($message['password']);
-					unset($message['salt']);
-				}
-
+				$users = $db_driver->setUser($fields, $salt);
+				if ($users === true)
+					httpResponse(201, array('message' => 'Successfully inserted'));
+				if ($users)
+					httpResponse(400, array('message' => $users));
+				httpResponse(500, null);
 			}
-			httpResponse($status_code, array($key => $message));
 			break;
 
 		case 'OPTIONS':

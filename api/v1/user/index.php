@@ -8,7 +8,8 @@
 	switch ($_SERVER['REQUEST_METHOD']) {
 		case 'GET':
 			checkConnected();
-
+			unset($_SESSION['user']['password']);
+			unset($_SESSION['user']['salt']);
 			httpResponse(200, array(
 				'user' => $_SESSION['user']
 			));
@@ -24,4 +25,3 @@
 			break;
 	}
 ?>
-

@@ -29,7 +29,7 @@
 			}
 
 			$statement = <<<SQL
-			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer,
+			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer, u.salt, u.password,
 				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory,
 				c.name, c.total_space, c.used_space, c.path
 			FROM   User u
@@ -55,7 +55,7 @@ SQL;
 				return null;
 
 			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-			$user =  $this->reformUsers($rows);
+			$user =  $this->reformUsers($rows, true);
 			return $user[0];
 		}
 
@@ -118,83 +118,174 @@ SQL;
 			return true;
 		}
 
-		public function updateUser($fields) {
-			$id = $fields['id'];
-			$statement = 'UPDATE User SET ';
-
+		public function setUser($fields, $salt) {
 			$params = array();
-			$to_be_updated = array();
-			unset($fields['id']);
-
-			$i = 0;
-			foreach($fields as $k => $v) {
-				$i++;
-				$params[":k$i"] = $k;
-				$params[":v$i"] = $v;
-				array_push($to_be_updated, ":k$i = :v$i");
-			}
-
-			$statement .= join(', ', $to_be_updated);
-			$statement .= ' WHERE id = :id';
-
-			$params[':id'] = $id;
-
-			error_log($statement);
-
-			$stmt = $this->db_connection->prepare($statement);
-
-			try {
-				$stmt->execute($params);
-			}
-			catch (Exception $e) {
-				return null;
-			}
-			return true;
-		}
-
-		public function createUser($fields, $salt) {
-
-			$salt = base64_encode($salt);
-			$password = hash_pbkdf2('sha512', $fields['password'], $salt, 1024, 40, true);
-			$password = base64_encode($password);
-
-			$params = array(
-				':customer' => $fields['customer'],
-				':fullname' => $fields['fullname'],
-				':access'   => $fields['access'],
-				':phone'    => $fields['phone'],
-				':is_admin' => $fields['is_admin'],
-				':is_active'=> $fields['is_active'],
-				':email'    => $fields['email'],
-				':salt'     => $salt,
-				':password' => $password
+			$update_fields = array(
+				'email' => array('type' => 'email', 'length' => 255, 'required' => true, 'tb' => 'User'),
+				'customer' => array('type' => 'int','required' => false, 'tb' => 'User'),
+				'fullname' => array('type' => 'text', 'required' => true, 'tb' => 'User'),
+				'password' => array('type' => 'text', 'required' => true, 'tb' => 'User'),
+				'salt' => array('type' => 'string', 'length' => 255, 'required' => true, 'tb' => 'User'),
+				'phone' => array('type' => 'text', 'required' => false, 'tb' => 'User'),
+				'is_active' => array('type' => 'bool', 'required' => true, 'tb' => 'User'),
+				'is_admin' => array('type' => 'bool', 'required' => true, 'tb' => 'User'),
+				'chroot' => array('type' => 'bool', 'required' => true, 'tb' => 'FtpUser'),
+				//'homedirectory' => array('type' => 'text', 'required' => true, 'tb' => 'FtpUser'),
+				'access' => array('type' => 'string','length' => 255, 'required' => true, 'tb' => 'FtpUser'),
+				'uid' => array('type' => 'int','required' => true, 'tb' => 'FtpUser'),
+				'gid' => array('type' => 'int', 'required' => true, 'tb' => 'FtpUser')
 			);
 
-			$statement = <<<SQL
-			INSERT INTO User
-				(id, customer, fullname, password, salt, access, phone, is_active, is_admin, email)
-			VALUES
-				(NULL, :customer, :fullname, :password, :salt, :access, :phone, :is_active, :is_admin, :email)
+			// Manage password
+			if (isset($fields['password']) && isset($salt)) {
+				$salt = base64_encode($salt);
+				$password = hash_pbkdf2('sha512', $fields['password'], $salt, 1024, 40, true);
+				$fields['password'] = base64_encode($password);
+				$fields['salt'] = $salt;
+			}
+
+			// Manage FTP Access
+			$fields['access'] = 'none';
+			if (($fields['ftp_read'] === true) && ($fields['ftp_write'] === true))
+				$fields['access'] = 'read_write';
+			else if ($fields['ftp_read'] === true)
+				$fields['access'] = 'read';
+			else if ($fields['ftp_write'] === true)
+				$fields['access'] = 'write';
+			unset($fields['ftp_read']);
+			unset($fields['ftp_write']);
+
+			if (intval($fields['id'])) // UPDATE
+			{
+				// Remove elements
+				$params[':id'] = intval($fields['id']);
+				$params[':customer'] = intval($fields['customer']);
+				unset($fields['customer']);
+				unset($fields['id']);
+
+				// validate
+				$to_be_updated = array();
+				foreach($update_fields as $k => $type) {
+					if (array_key_exists($k, $fields)) {
+						array_push($to_be_updated, $k . '=:' . $k);
+						$msg = $this->validate($fields[$k], $type);
+						if ($msg !== true)
+							return $k.$msg;
+						$params[':'.$k] = $fields[$k];
+					}
+				}
+
+				$statement = <<<SQL
+				UPDATE User
+				LEFT JOIN Customer ON (customer = Customer.id)
+				LEFT JOIN FtpUser ON (User.id = FtpUser.id) SET
+
 SQL;
+				$statement .= join(', ', $to_be_updated);
+				$statement .= ' WHERE User.id = :id AND customer = :customer';
 
-			error_log($statement);
-			error_log($password);
-			error_log($salt);
-
-			$stmt = $this->db_connection->prepare($statement);
-
-			try{
-				$stmt->execute($params);
+				// Execution
+				$stmt = $this->db_connection->prepare($statement);
+				try {
+					$stmt->execute($params);
+				}
+				catch (PDOException $e) {
+					// Duplicate Entry
+					if ($e->errorInfo[1] == 1062)
+						return 'email already exists';
+					return false;
+				}
+				return true;
 			}
-			catch (Exception $e){
-				return false;
+			else // INSERT
+			{
+
+				$paramsuser = $paramsftp = array();
+				$paramsuser[':customer'] = $fields['gid']  = intval($fields['customer']);
+				$fields['uid'] = 0;
+				// check if all elements are presents
+				$fields_inserted_user = array();
+				$fields_inserted_ftp = array();
+				$values_inserted_user = array();
+				$values_inserted_ftp = array();
+
+				foreach($update_fields as $k => $type) {
+
+					if ($type['required'] === true) {
+						if (array_key_exists($k, $fields) !== false) {
+							$msg = $this->validate($fields[$k], $type);
+							if ($msg !== true)
+								return $k.$msg;
+							if ($type['tb'] == 'User') {
+								array_push($fields_inserted_user, $k);
+								array_push($values_inserted_user, ':'.$k);
+								$paramsuser[':'.$k] = $fields[$k];
+							} else if ($type['tb'] == 'FtpUser') {
+								array_push($fields_inserted_ftp, $k);
+								array_push($values_inserted_ftp, ':'.$k);
+								$paramsftp[':'.$k] = $fields[$k];
+							}
+						} else {
+							return $k.' is needed';
+						}
+					} else {
+						if (array_key_exists($k, $fields)) {
+							$msg = $this->validate($fields[$k], $type);
+							if ($msg !== true)
+								return $k.$msg;
+							if ($type['tb'] == 'User') {
+								array_push($fields_inserted_user, $k);
+								array_push($values_inserted_user, ':'.$k);
+								$paramsuser[':'.$k] = $fields[$k];
+							} else if ($type['tb'] == 'FtpUser') {
+								array_push($fields_inserted_ftp, $k);
+								array_push($values_inserted_ftp, ':'.$k);
+								$paramsftp[':'.$k] = $fields[$k];
+							}
+						}
+					}
+				}
+
+				// INSERT
+				$statement1 = 'INSERT INTO User (';
+				$statement1 .= join(', ', $fields_inserted_user);
+				$statement1 .= ') VALUES (';
+				$statement1 .= join(', ', $values_inserted_user);
+				$statement1 .= ')';
+
+				$this->db_connection->beginTransaction();
+				$stmt1 = $this->db_connection->prepare($statement1);
+				try {
+					$stmt1->execute($paramsuser);
+					$uid = $this->db_connection->lastInsertId();
+				} catch(PDOException $e) {
+					$this->db_connection->rollback();
+					if ($e->errorInfo[1] == 1062)
+						return 'email already exists';
+					return false;
+				}
+
+				// add specifics elements
+				array_push($fields_inserted_ftp, 'id');
+				array_push($values_inserted_ftp, ':id');
+				$paramsftp[':id'] = $paramsftp[':uid'] = $uid;
+
+				$statement2 = 'INSERT INTO FtpUser (';
+				$statement2 .= join(', ', $fields_inserted_ftp);
+				$statement2 .= ') VALUES (';
+				$statement2 .= join(', ', $values_inserted_ftp);
+				$statement2 .= ')';
+				$stmt2 = $this->db_connection->prepare($statement2);
+				try {
+					$stmt2->execute($paramsftp);
+					$this->db_connection->commit();
+				} catch(PDOException $e) {
+					$this->db_connection->rollback();
+					return false;
+				}
+				return true;
 			}
-
-			error_log($fields['login']);
-			return $this->getUser($fields['nihil'], $fields['email']);
-
 		}
-
 
 		public function getCustomer($id) {
 			if ( !(isset($id) || ! is_numeric($id)) )
@@ -473,9 +564,13 @@ SQL;
 		 * \brief main validate method
 		 */
 		private function validate($el, $type) {
-			if (($type['required'] === true) && !trim($el))
-				return ' need to be set';
+			if (($type['required'] === true) && (trim($el) === NULL ))
+				return ' need to be set 2';
 			switch ($type['type']) {
+				case 'bool':
+					if(is_bool($el))
+						return true;
+					return ' is not boolean';
 				case 'int':
 					if (!is_numeric($el))
 						return ' is not numeric';
@@ -551,7 +646,7 @@ SQL;
 		/**
 		 * \brief Users method
 		 */
-		private function reformUsers($rows) {
+		private function reformUsers($rows, $keep_credentials = false) {
 			if (count($rows)) foreach($rows as $key => $row) {
 				// Manage User
 				$rows[$key]['id'] = intval($rows[$key]['id']);
@@ -581,6 +676,10 @@ SQL;
 					$rows[$key]['directory'] = str_replace($rows[$key]['path'], '', $rows[$key]['homedirectory']);
 
 				// Remove unnecessary elements
+				if(!$keep_credentials) {
+					unset($rows[$key]['salt']);
+					unset($rows[$key]['password']);
+				}
 				unset($rows[$key]['f_access']);
 				unset($rows[$key]['path']);
 				unset($rows[$key]['homedirectory']);

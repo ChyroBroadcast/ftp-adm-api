@@ -33,7 +33,7 @@
 			$raw_pw = hash_pbkdf2('sha512', $credential['password'], $user['salt'], 1024, 40, true);
 
 			if ($user['password'] != base64_encode($raw_pw))
-				httpResponse(401, array('message' => 'Authentication failed'));
+				httpResponse(401, array('message' => 'Password failed'));
 
 			$_SESSION['user'] = $user;
 
