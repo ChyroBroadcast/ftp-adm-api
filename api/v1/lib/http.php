@@ -148,7 +148,17 @@
 		$input_functions = true;
 		include($available_formats[$mime_type]);
 
-		return formatParseInput($option);
+		$returned = formatParseInput($option);
+		if ($returned['error']) {
+			header("Content-Type: application/json; charset=utf-8");
+			http_response_code(400);
+			echo json_encode(array(
+				'message' => 'Problems while parsing input data'
+			));
+			exit;
+		}
+
+		return $returned['value'];
 	}
 
 	function httpResponse($code, $message, $option = array()) {

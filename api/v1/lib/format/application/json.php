@@ -2,7 +2,11 @@
 	if ($input_functions) {
 		function formatParseInput(&$option) {
 			$content = file_get_contents('php://input');
-			return json_decode($content, true);
+			$returned = json_decode($content, true);
+			return array(
+				'error' => json_last_error() != JSON_ERROR_NONE,
+				'value' => $returned
+			);
 		}
 	} else {
 		function formatContentType() {
