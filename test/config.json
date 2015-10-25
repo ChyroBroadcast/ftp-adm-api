@@ -1,0 +1,12 @@
+{
+	"scheme": "http",
+	"host": "taiko",
+	"path": "/ftp-adm-api/api/v1/",
+	"users": {
+		"qlowd": {
+			"id": 1,
+			"login": "foo",
+			"password": "bar"
+		}
+	}
+}
