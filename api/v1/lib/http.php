@@ -113,19 +113,21 @@
 
 		$found = false;
 
-		if (isset($_SERVER['CONTENT_TYPE'])) {
+		$content_type = $_SERVER['CONTENT_TYPE'] ?: $_SERVER['HTTP_CONTENT_TYPE'];
+		if ($content_type) {
 			/**
 			 * Parse HTTP content-type
 			 * See http://www.w3.org/Protocols/rfc1341/4_Content-Type.html for more information
 			 */
-			$parts = explode(';', $_SERVER['CONTENT_TYPE']);
+			$parts = preg_split('/;/', $content_type);
 
-			$mime_type = trim(array_shift($parts));
-			if (array_key_exists($mime_type, $available_formats) !== false) {
+			$format = array_shift($parts);
+
+			if (array_key_exists($format, $available_formats) !== false) {
 				$found = true;
 
 				foreach ($parts as $parameter) {
-					list($attribute, $value) = explode('=', $parameter, 2);
+					list($attribute, $value) = preg_split('/=/', $parameter, 2);
 
 					$attribute = trim($attribute);
 					$value = trim($value);
@@ -146,7 +148,7 @@
 		}
 
 		$input_functions = true;
-		include($available_formats[$mime_type]);
+		include($available_formats[$format]);
 
 		$returned = formatParseInput($option);
 		if ($returned['error']) {
