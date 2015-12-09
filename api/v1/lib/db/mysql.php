@@ -301,17 +301,11 @@ SQL;
 SQL;
             
             $address_req = <<<SQL
-                SELECT
-                    a.title, a.street,
-                    a.zip_code, a.country,
-                    a.iban, a.vat_number,
-                    a.phone
-                FROM Customer c
-                LEFT JOIN  addresscustomerrelation rel
-                  ON rel.customer = c.id
-                LEFT JOIN  Address a
-                  ON rel.address = a.id
-                WHERE c.id = :id
+                SELECT     a.*, c.id as customer
+                FROM       Customer c
+                LEFT JOIN  addresscustomerrelation rel ON rel.customer = c.id
+                LEFT JOIN  Address a ON rel.address = a.id
+                WHERE      c.id = :id
 SQL;
 
 			$cust_stmt = $this->db_connection->prepare($customer_req);
@@ -325,7 +319,7 @@ SQL;
 			} catch (Exception $e) {
 				return false;
 			}
-			if (!($addr_res && $cust_res))
+			if ( !($addr_res && $cust_res) )
 				return false;
 
 			if ($cust_stmt->rowCount() != 1)
@@ -358,7 +352,12 @@ SQL;
 			// manage Id
 			$params = array();
 			$params[':id'] = intval($fields['id']);
-			unset($fields['id']);
+            $address_list = $fields['address'];
+            unset($fields['id']);
+            
+            if(count($address_list)) foreach($address_list as $addr){
+                $this->setAddress($addr);
+            }
 
 			// validate or exit
 			$to_be_updated = array();
@@ -390,7 +389,7 @@ SQL;
 		}
 
 
-		public function getAddress($cid, $aid = nul) {
+		public function getAddress($cid, $aid = null) {
 			if ( !(isset($cid) && is_numeric($cid)) )
 				return false;
 
