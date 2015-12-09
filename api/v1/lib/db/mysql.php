@@ -25,7 +25,7 @@
 				$params[':email'] = $login;
 			} else {
 				$params[':id'] = $id;
-				$params['cid'] = $cid;
+				$params[':cid'] = $cid;
 			}
 
 			$statement = <<<SQL
@@ -294,31 +294,51 @@ SQL;
 			$params = array();
 			$params[':id'] = $id;
 
-			$statement = <<<SQL
-			SELECT c.*
-			FROM Customer c
-			WHERE c.id = :id
+			$customer_req = <<<SQL
+                SELECT c.*
+                FROM   Customer c
+                WHERE  c.id = :id
+SQL;
+            
+            $address_req = <<<SQL
+                SELECT
+                    a.title, a.street,
+                    a.zip_code, a.country,
+                    a.iban, a.vat_number,
+                    a.phone
+                FROM Customer c
+                LEFT JOIN  addresscustomerrelation rel
+                  ON rel.customer = c.id
+                LEFT JOIN  Address a
+                  ON rel.address = a.id
+                WHERE c.id = :id
 SQL;
 
-			$stmt = $this->db_connection->prepare($statement);
-			$stmt->execute($params);
+			$cust_stmt = $this->db_connection->prepare($customer_req);
+            $addr_stmt = $this->db_connection->prepare($address_req);
+			$cust_stmt->execute($params);
+            $addr_stmt->execute($params);
+            
 			try {
-				$res = $stmt->execute($params);
+    			$cust_res = $cust_stmt->execute($params);
+                $addr_res = $addr_stmt->execute($params);
 			} catch (Exception $e) {
 				return false;
 			}
-			if (!$res)
+			if (!($addr_res && $cust_res))
 				return false;
 
-			if ($stmt->rowCount() != 1)
+			if ($cust_stmt->rowCount() != 1)
 				return null;
 
-			$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+			$rows = $cust_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $addr_list = $addr_stmt->fetchAll(PDO::FETCH_ASSOC);
 			foreach($rows as $key => $row) {
 				$rows[$key]['id'] = intval($rows[$key]['id']);
 				$rows[$key]['total_space'] = intval($rows[$key]['total_space']);
 				$rows[$key]['used_space'] = intval($rows[$key]['used_space']);
 				$rows[$key]['max_monthly_space'] = intval($rows[$key]['max_monthly_space']);
+                $rows[$key]['address'] = $addr_list;
 
 				// Remove unnecessary elements
 				unset($rows[$key]['price']);
