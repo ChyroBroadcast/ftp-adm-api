@@ -355,8 +355,13 @@ SQL;
             $address_list = $fields['address'];
             unset($fields['id']);
             
+            $errors = '';
+            
             if(count($address_list)) foreach($address_list as $addr){
-                $this->setAddress($addr);
+                $success = $this->setAddress($addr);
+                if( !($success === true) ){
+                    $errors .=  $success.';';
+                }
             }
 
 			// validate or exit
@@ -366,7 +371,7 @@ SQL;
 					array_push($to_be_updated, $k . '=:' . $k);
 					$msg = $this->validate($fields[$k], $type);
 					if ($msg !== true)
-						return $k.$msg;
+						$errors .= $k.$msg.';';
 					$params[':'.$k] = $fields[$k];
 				}
 			}
@@ -385,7 +390,9 @@ SQL;
 				print $e;
 				return false;
 			}
-			return true;
+            if(empty($errors))
+			    return true;
+            return $errors;
 		}
 
 
@@ -583,7 +590,8 @@ SQL;
 		 * \brief main validate method
 		 */
 		private function validate($el, $type) {
-			if (($type['required'] === true) && (trim($el) === NULL ))
+			if (($type['required'] === true) && (  (trim($el) === NULL )
+                                                || (empty($el))))
 				return ' need to be set 2';
 			switch ($type['type']) {
 				case 'bool':
