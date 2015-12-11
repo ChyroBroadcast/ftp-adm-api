@@ -119,6 +119,7 @@ SQL;
 		}
 
 		public function setUser($fields, $salt) {
+                        $customer = $this->getCustomer($_SESSION['customer']);
 			$params = array();
 			$update_fields = array(
 				'email' => array('type' => 'email', 'length' => 255, 'required' => true, 'tb' => 'User'),
