@@ -359,7 +359,7 @@ SQL;
             
             if(count($address_list)) foreach($address_list as $addr){
                 $success = $this->setAddress($addr);
-                if( !($success === true) ){
+                if($success !== true){
                     $errors .=  $success.';';
                 }
             }
@@ -382,17 +382,20 @@ SQL;
 			$statement .= ' WHERE id = :id';
 
 			$stmt = $this->db_connection->prepare($statement);
-
-			try {
-				$stmt->execute($params);
-			}
-			catch (Exception $e) {
-				print $e;
-				return false;
-			}
-            if(empty($errors))
-			    return true;
+            
+            // Don't try to execute the request if information are invalid.
+            if(empty($errors)){
+    			try {
+    				$stmt->execute($params);
+    			}
+    			catch (Exception $e) {
+    				print $e;
+    				return false;
+    			}
+                return true;
+            }
             return $errors;
+            
 		}
 
 
@@ -448,6 +451,7 @@ SQL;
 				'vat_number' => array('type' => 'text', 'required' => false)
 			);
 			$params = array();
+            $errors = '';
 
 			if (intval($fields['id'])) // UPDATE
 			{
@@ -464,7 +468,7 @@ SQL;
 						array_push($to_be_updated, $k . '=:' . $k);
 						$msg = $this->validate($fields[$k], $type);
 						if ($msg !== true)
-							return $k.$msg;
+							$errors .= $k.$msg.';';
 						$params[':'.$k] = $fields[$k];
 					}
 				}
@@ -479,13 +483,17 @@ SQL;
 
 				// Execution
 				$stmt = $this->db_connection->prepare($statement);
-				try {
-					$stmt->execute($params);
-				}
-				catch (Exception $e) {
-					return false;
-				}
-				return true;
+                if(empty($errors)){
+    				try {
+    					$stmt->execute($params);
+    				}
+    				catch (Exception $e) {
+    					return false;
+    				}
+    				if(empty($errors))
+                        return true;
+                }
+                return $errors;
 
 			}
 			else // INSERT
@@ -498,18 +506,18 @@ SQL;
 						if (array_key_exists($k, $fields)) {
 							$msg = $this->validate($fields[$k], $type);
 							if ($msg !== true)
-								return $k.$msg;
+								$errors .= $k.$msg.';';
 							array_push($fields_inserted, $k);
 							array_push($values_inserted, ':'.$k);
 							$params[':'.$k] = $fields[$k];
 						} else {
-							return $k.' is needed';
+							$errors .= $k.' is needed;';
 						}
 					} else {
 						if (array_key_exists($k, $fields)) {
 							$msg = $this->validate($fields[$k], $type);
 							if ($msg !== true)
-								return $k.$msg;
+								$errors .= $k.$msg.';';
 							array_push($fields_inserted, $k);
 							array_push($values_inserted, ':'.$k);
 							$params[':'.$k] = $fields[$k];
@@ -536,14 +544,18 @@ SQL;
 				$statement2 = 'INSERT INTO addresscustomerrelation (customer, address) VALUES (:customer, :address)';
 				$stmt2 = $this->db_connection->prepare($statement2);
 				$params2 = array(':customer' => $fields['customer'], ':address' => $aid);
-				try {
-					$stmt2->execute($params2);
-					$this->db_connection->commit();
-				} catch(PDOExecption $e) {
-					$this->db_connection->rollback();
-					return false;
-				}
-				return true;
+                // Don't even try to execute the request if informations are incorrect
+                if(empty($errors)){
+    				try {
+    					$stmt2->execute($params2);
+    					$this->db_connection->commit();
+    				} catch(PDOExecption $e) {
+    					$this->db_connection->rollback();
+    					return false;
+    				}
+                    return true;
+                }
+                return $errors;
 			}
 		}
 
