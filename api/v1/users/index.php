@@ -50,32 +50,42 @@
 
 		case 'POST':
 			checkConnected();
+
+			$fields = httpParseInput();
+			$fields['customer'] = $_SESSION['user']['customer'];
+
+			$salt = generate_salt(40);
+			$users = $db_driver->setUser($fields, $salt);
+
+			if ($users === true)
+				httpResponse(201, array('message' => 'Successfully inserted'));
+
+			if ($users)
+				httpResponse(400, array('message' => $users));
+
+			httpResponse(500, null);
+
+			break;
+
+		case 'PUT':
+			checkConnected();
 			$salt = NULL;
 			$fields = httpParseInput();
 			$fields['customer'] = $_SESSION['user']['customer'];
-			if (isset($fields['id'])) {
-				if (isset($fields['password']))
-					$salt = generate_salt(40);
-				$users = $db_driver->setUser($fields, $salt);
-				if ($users === true) {
-					httpResponse(200, array('message' => 'Successfully updated'));
-				}
-				if ($users)
-					httpResponse(400, array('message' => $users));
-				httpResponse(500, null);
-			} else {
+
+			if (isset($fields['password']))
 				$salt = generate_salt(40);
-				$users = $db_driver->setUser($fields, $salt);
-				if ($users === true)
-					httpResponse(201, array('message' => 'Successfully inserted'));
-				if ($users)
-					httpResponse(400, array('message' => $users));
-				httpResponse(500, null);
-			}
+			$users = $db_driver->setUser($fields, $salt);
+			if ($users === true)
+				httpResponse(200, array('message' => 'Successfully updated'));
+			if ($users)
+				httpResponse(400, array('message' => $users));
+			httpResponse(500, null);
+
 			break;
 
 		case 'OPTIONS':
-			httpOptionsMethod(HTTP_ALL_METHODS & ~HTTP_PUT);
+			httpOptionsMethod(HTTP_ALL_METHOD);
 			break;
 
 		default:

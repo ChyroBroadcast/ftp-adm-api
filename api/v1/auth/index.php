@@ -36,6 +36,8 @@
 				httpResponse(401, array('message' => 'Password failed'));
 
 			$_SESSION['user'] = $user;
+			unset($_SESSION['user']['password']);
+			unset($_SESSION['user']['salt']);
 
 			httpAddLocation('/auth/');
 			httpResponse(201, array(
