@@ -886,6 +886,8 @@ SQL;
 				// Special PATH
 				if ((isset($rows[$key]['path'])) && (isset($rows[$key]['homedirectory'])))
 					$rows[$key]['directory'] = str_replace($rows[$key]['path'], '', $rows[$key]['homedirectory']);
+				else
+					$rows[$key]['directory'] = $rows[$key]['homedirectory'];
 
 				// Remove unnecessary elements
 				if (!$keep_credentials) {
