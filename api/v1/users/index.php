@@ -11,7 +11,7 @@
 			checkConnected();
 
 			if (isset($_GET['id'])) {
-				$id =  intval($_GET['id']);
+				$id = intval($_GET['id']);
 				if ($id != $_SESSION['user']['id']) {
 					$result =  $db_driver->deleteUser($id, $_SESSION['user']['customer']);
 					if ($result)
@@ -69,12 +69,14 @@
 
 		case 'PUT':
 			checkConnected();
+
 			$salt = NULL;
 			$fields = httpParseInput();
 			$fields['customer'] = $_SESSION['user']['customer'];
 
 			if (isset($fields['password']))
 				$salt = generate_salt(40);
+
 			$users = $db_driver->setUser($fields, $salt);
 			if ($users === true)
 				httpResponse(200, array('message' => 'Successfully updated'));

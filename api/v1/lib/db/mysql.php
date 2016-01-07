@@ -12,113 +12,8 @@ class mysql implements DB {
 		$this->db_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 	}
 
-	public function getUser($id, $cid, $login) {
-		if (!isset($login)) {
-			if (!(isset($id) && is_numeric($id)))
-				return false;
-			if (!(isset($cid) && is_numeric($cid)))
-				return false;
-		}
-
-		$params = array();
-		if (isset($login)) {
-			$params[':email'] = $login;
-		} else {
-			$params[':id']  = $id;
-			$params[':cid'] = $cid;
-		}
-
-		$statement = <<<SQL
-			SELECT u.id, u.fullname, u.access , u.phone, u.is_active, u.is_admin, u.email, u.customer, u.salt, u.password,
-				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory,
-				c.name, c.total_space, c.used_space, c.path
-			FROM User u
-				LEFT JOIN FtpUser f USING (id)
-				LEFT JOIN Customer c ON (u.customer = c.id)
-SQL;
-		if (isset($login)) {
-			$statement .= ' WHERE email = :email';
-		} else {
-			$statement .= ' WHERE  u.customer = :cid AND u.id = :id';
-		}
-
-		$stmt = $this->db_connection->prepare($statement);
-		try {
-			$res = $stmt->execute($params);
-		}
-		catch (Exception $e) {
-			print $e;
-			return false;
-		}
-
-		if ($stmt->rowCount() != 1)
-			return null;
-
-		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-		$user = $this->reformUsers($rows, true);
-		return $user[0];
-	}
-
-	public function getUsersByCustomerId($id) {
-		if (!(isset($id) && is_numeric($id)))
-			return false;
-
-		$params = array(':id' => $id);
-
-		$statement = <<<SQL
-			SELECT u.id, u.fullname, u.access, u.phone, u.is_active, u.is_admin, u.email, u.customer,
-				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory
-			FROM User u
-				LEFT JOIN FtpUser f USING (id)
-			WHERE u.customer = :id
-SQL;
-
-		$stmt = $this->db_connection->prepare($statement);
-		try {
-			$res = $stmt->execute($params);
-		}
-		catch (Exception $e) {
-			return false;
-		}
-
-		if ($stmt->rowCount() == 0)
-			return null;
-
-		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-		return $this->reformUsers($rows);
-	}
-
-	public function deleteUser($id, $cid) {
-		if (!(isset($id) && is_numeric($id)))
-			return false;
-		if (!(isset($id) && is_numeric($cid)))
-			return false;
-
-		$params = array(
-			':id'  => $id,
-			':cid' => $cid
-		);
-
-		$statement = <<<SQL
-			DELETE FROM User
-			WHERE id = :id AND customer = :cid
-SQL;
-
-		$stmt = $this->db_connection->prepare($statement);
-		try {
-			$res = $stmt->execute($params);
-		}
-		catch (Exception $e) {
-			return false;
-		}
-		return true;
-	}
-
-	public function setUser($fields, $salt) {
-		$customer      = $this->getCustomer($_SESSION['customer']);
-		$params        = array();
-		$update_fields = array(
+	public function createUser($new_user) {
+		$create_fields = array(
 			'email' => array(
 				'type' => 'email',
 				'length' => 255,
@@ -127,7 +22,7 @@ SQL;
 			),
 			'customer' => array(
 				'type' => 'int',
-				'required' => false,
+				'required' => true,
 				'tb' => 'User'
 			),
 			'fullname' => array(
@@ -184,6 +79,241 @@ SQL;
 				'tb' => 'FtpUser'
 			)
 		);
+	}
+
+	public function deleteUser($id, $cid) {
+		if (!(isset($id) && is_numeric($id)))
+			return false;
+		if (!(isset($id) && is_numeric($cid)))
+			return false;
+
+		$params = array(
+			':id'  => $id,
+			':cid' => $cid
+		);
+
+		$statement = <<<SQL
+			DELETE FROM User
+			WHERE id = :id AND customer = :cid
+SQL;
+
+		$stmt = $this->db_connection->prepare($statement);
+		try {
+			$res = $stmt->execute($params);
+		}
+		catch (Exception $e) {
+			return false;
+		}
+		return true;
+	}
+
+	public function getCustomer($id) {
+		if (!(isset($id) || !is_numeric($id)))
+			return false;
+
+		$params = array(':id' => $id);
+
+		$customer_req = <<<SQL
+		SELECT c.*
+		FROM Customer c
+		WHERE c.id = :id
+SQL;
+
+		$address_req = <<<SQL
+		SELECT a.*, c.id as customer
+		FROM Customer c
+			LEFT JOIN addresscustomerrelation rel ON rel.customer = c.id
+			LEFT JOIN Address a ON rel.address = a.id
+		WHERE c.id = :id
+SQL;
+
+		$cust_stmt = $this->db_connection->prepare($customer_req);
+		$addr_stmt = $this->db_connection->prepare($address_req);
+		$cust_stmt->execute($params);
+		$addr_stmt->execute($params);
+
+		try {
+			$cust_res = $cust_stmt->execute($params);
+			$addr_res = $addr_stmt->execute($params);
+		}
+		catch (Exception $e) {
+			return false;
+		}
+		if (!($addr_res && $cust_res))
+			return false;
+
+		if ($cust_stmt->rowCount() != 1)
+			return null;
+
+		$rows      = $cust_stmt->fetchAll(PDO::FETCH_ASSOC);
+		$addr_list = $addr_stmt->fetchAll(PDO::FETCH_ASSOC);
+		foreach ($rows as $key => $row) {
+			$rows[$key]['id']                = intval($rows[$key]['id']);
+			$rows[$key]['total_space']       = intval($rows[$key]['total_space']);
+			$rows[$key]['used_space']        = intval($rows[$key]['used_space']);
+			$rows[$key]['max_monthly_space'] = intval($rows[$key]['max_monthly_space']);
+			$rows[$key]['address']           = $addr_list;
+
+			// Remove unnecessary elements
+			unset($rows[$key]['price']);
+			unset($rows[$key]['path']);
+			unset($rows[$key]['url']);
+		}
+		return $rows[0];
+	}
+
+	public function getUser($id, $cid, $login) {
+		if (!isset($login)) {
+			if (!(isset($id) && is_numeric($id)))
+				return false;
+			if (!(isset($cid) && is_numeric($cid)))
+				return false;
+		}
+
+		$params = array();
+		if (isset($login)) {
+			$params[':email'] = $login;
+		} else {
+			$params[':id']  = $id;
+			$params[':cid'] = $cid;
+		}
+
+		$statement = <<<SQL
+			SELECT u.id, u.fullname, u.access, u.phone, u.is_active, u.is_admin, u.email, u.customer, u.salt, u.password,
+				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory, c.name, c.total_space, c.used_space, c.path
+			FROM User u
+				LEFT JOIN FtpUser f USING (id)
+				LEFT JOIN Customer c ON (u.customer = c.id)
+			WHERE
+SQL;
+
+		if (isset($login)) {
+			$statement .= ' email = :email';
+		} else {
+			$statement .= ' u.customer = :cid AND u.id = :id';
+		}
+
+		$stmt = $this->db_connection->prepare($statement);
+		try {
+			$res = $stmt->execute($params);
+		}
+		catch (Exception $e) {
+			print $e;
+			return false;
+		}
+
+		if ($stmt->rowCount() != 1)
+			return null;
+
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		$user = $this->reformUsers($rows, true);
+		return $user[0];
+	}
+
+	public function getUsersByCustomerId($id) {
+		if (!(isset($id) && is_numeric($id)))
+			return false;
+
+		$params = array(':id' => $id);
+
+		$statement = <<<SQL
+			SELECT u.id, u.fullname, u.access, u.phone, u.is_active, u.is_admin, u.email, u.customer,
+				f.uid, f.gid, f.access AS f_access, f.chroot, f.homedirectory, u.phone
+			FROM User u
+				LEFT JOIN FtpUser f USING (id)
+				LEFT JOIN Customer c ON (u.customer = c.id)
+			WHERE u.customer = :id
+SQL;
+
+		$stmt = $this->db_connection->prepare($statement);
+		try {
+			$res = $stmt->execute($params);
+		}
+		catch (Exception $e) {
+			return false;
+		}
+
+		if ($stmt->rowCount() == 0)
+			return null;
+
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+		return $this->reformUsers($rows);
+	}
+
+	public function setUser($fields, $salt) {
+		$customer      = $this->getCustomer($_SESSION['user']['customer']);
+		$params        = array();
+		$update_fields = array(
+			'email' => array(
+				'type' => 'email',
+				'length' => 255,
+				'required' => true,
+				'tb' => 'User'
+			),
+			'customer' => array(
+				'type' => 'int',
+				'required' => false,
+				'tb' => 'User'
+			),
+			'fullname' => array(
+				'type' => 'text',
+				'required' => true,
+				'tb' => 'User'
+			),
+			'password' => array(
+				'type' => 'text',
+				'required' => true,
+				'tb' => 'User'
+			),
+			'salt' => array(
+				'type' => 'string',
+				'length' => 255,
+				'required' => true,
+				'tb' => 'User'
+			),
+			'phone' => array(
+				'type' => 'text',
+				'required' => false,
+				'tb' => 'User'
+			),
+			'is_active' => array(
+				'type' => 'bool',
+				'required' => true,
+				'tb' => 'User'
+			),
+			'is_admin' => array(
+				'type' => 'bool',
+				'required' => true,
+				'tb' => 'User'
+			),
+			'chroot' => array(
+				'type' => 'bool',
+				'required' => true,
+				'tb' => 'FtpUser'
+			),
+			'homedirectory' => array(
+				'type' => 'text',
+				'required' => true,
+				'tb' => 'FtpUser'
+			),
+			'access' => array(
+				'type' => 'string',
+				'length' => 255,
+				'required' => true,
+				'tb' => 'FtpUser'
+			),
+			'uid' => array(
+				'type' => 'int',
+				'required' => false,
+				'tb' => 'FtpUser'
+			),
+			'gid' => array(
+				'type' => 'int',
+				'required' => true,
+				'tb' => 'FtpUser'
+			)
+		);
 
 		// Manage password
 		if (isset($fields['password']) && isset($salt)) {
@@ -215,7 +345,7 @@ SQL;
 			$to_be_updated = array();
 			foreach ($update_fields as $k => $type) {
 				if (array_key_exists($k, $fields)) {
-					array_push($to_be_updated, $k . '=:' . $k);
+					array_push($to_be_updated, $update_fields[$k]['tb'] . '.' . $k . '=:' . $k);
 					$msg = $this->validate($fields[$k], $type);
 					if ($msg !== true)
 						return $k . $msg;
@@ -234,6 +364,7 @@ SQL;
 
 			// Execution
 			$stmt = $this->db_connection->prepare($statement);
+
 			try {
 				$stmt->execute($params);
 			}
@@ -241,7 +372,7 @@ SQL;
 				// Duplicate Entry
 				if ($e->errorInfo[1] == 1062)
 					return 'email already exists';
-				return false;
+				return $e->errorInfo;
 			}
 			return true;
 		} else { // INSERT
@@ -331,61 +462,6 @@ SQL;
 			}
 			return true;
 		}
-	}
-
-	public function getCustomer($id) {
-		if (!(isset($id) || !is_numeric($id)))
-			return false;
-
-		$params = array(':id' => $id);
-
-		$customer_req = <<<SQL
-		SELECT c.*
-		FROM Customer c
-		WHERE c.id = :id
-SQL;
-
-		$address_req = <<<SQL
-		SELECT a.*, c.id as customer
-		FROM Customer c
-			LEFT JOIN addresscustomerrelation rel ON rel.customer = c.id
-			LEFT JOIN Address a ON rel.address = a.id
-		WHERE c.id = :id
-SQL;
-
-		$cust_stmt = $this->db_connection->prepare($customer_req);
-		$addr_stmt = $this->db_connection->prepare($address_req);
-		$cust_stmt->execute($params);
-		$addr_stmt->execute($params);
-
-		try {
-			$cust_res = $cust_stmt->execute($params);
-			$addr_res = $addr_stmt->execute($params);
-		}
-		catch (Exception $e) {
-			return false;
-		}
-		if (!($addr_res && $cust_res))
-			return false;
-
-		if ($cust_stmt->rowCount() != 1)
-			return null;
-
-		$rows      = $cust_stmt->fetchAll(PDO::FETCH_ASSOC);
-		$addr_list = $addr_stmt->fetchAll(PDO::FETCH_ASSOC);
-		foreach ($rows as $key => $row) {
-			$rows[$key]['id']                = intval($rows[$key]['id']);
-			$rows[$key]['total_space']       = intval($rows[$key]['total_space']);
-			$rows[$key]['used_space']        = intval($rows[$key]['used_space']);
-			$rows[$key]['max_monthly_space'] = intval($rows[$key]['max_monthly_space']);
-			$rows[$key]['address']           = $addr_list;
-
-			// Remove unnecessary elements
-			unset($rows[$key]['price']);
-			unset($rows[$key]['path']);
-			unset($rows[$key]['url']);
-		}
-		return $rows[0];
 	}
 
 	public function updateCustomer($fields) {
